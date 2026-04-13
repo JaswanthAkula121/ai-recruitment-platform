@@ -10,13 +10,12 @@ import { ApplicationsModule } from './applications/applications.module';
   imports: [
     TypeOrmModule.forRoot({
       type: 'postgres',
-      host: 'localhost',
-      port: 5432,
-      username: 'postgres',
-      password: 'sai@216024',
-      database: 'ats',
+      url: process.env.DATABASE_URL,
       autoLoadEntities: true,
       synchronize: true,
+      ssl: {
+        rejectUnauthorized: false,
+      },
     }),
     JobsModule,
     CandidatesModule,
