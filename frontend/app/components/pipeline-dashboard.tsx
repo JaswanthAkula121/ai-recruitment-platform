@@ -2,7 +2,6 @@
 
 import React, {
   ChangeEvent,
-  DragEvent,
   FormEvent,
   useEffect,
   useState,
@@ -34,15 +33,12 @@ type CreateApplicationInput = {
   status: PipelineStatus;
 };
 
-const PIPELINE_COLUMNS: Array<{
-  key: PipelineStatus;
-  label: string;
-}> = [
+const PIPELINE_COLUMNS = [
   { key: "applied", label: "Applied" },
   { key: "interview", label: "Interview" },
   { key: "hired", label: "Hired" },
   { key: "rejected", label: "Rejected" },
-];
+] as const;
 
 const EMPTY_PIPELINE: PipelineResponse = {
   applied: [],
@@ -94,7 +90,6 @@ export default function PipelineDashboard() {
   const [pipeline, setPipeline] = useState<PipelineResponse>(EMPTY_PIPELINE);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-
   const [dragged, setDragged] = useState<DraggedApplication | null>(null);
 
   const [createForm, setCreateForm] = useState({
@@ -112,8 +107,7 @@ export default function PipelineDashboard() {
   async function loadPipeline() {
     try {
       const res = await fetch(`${API_URL}/applications/pipeline`);
-
-      if (!res.ok) throw new Error("Failed to load pipeline");
+      if (!res.ok) throw new Error();
 
       const data = await res.json();
       setPipeline(normalizePipeline(data));
@@ -133,29 +127,22 @@ export default function PipelineDashboard() {
       `${API_URL}/applications/${applicationId}/status`,
       {
         method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status }),
       },
     );
 
-    if (!res.ok) throw new Error("Update failed");
+    if (!res.ok) throw new Error();
   }
 
-  async function createApplication(
-    payload: CreateApplicationInput,
-  ) {
+  async function createApplication(payload: CreateApplicationInput) {
     const res = await fetch(`${API_URL}/applications`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
 
-    if (!res.ok) throw new Error("Create failed");
-
+    if (!res.ok) throw new Error();
     return res.json();
   }
 
@@ -210,11 +197,7 @@ export default function PipelineDashboard() {
     fromStatus: PipelineStatus,
   ) {
     e.dataTransfer.effectAllowed = "move";
-
-    setDragged({
-      id,
-      fromStatus,
-    });
+    setDragged({ id, fromStatus });
   }
 
   function handleDragOver(e: React.DragEvent<HTMLDivElement>) {
@@ -291,10 +274,8 @@ export default function PipelineDashboard() {
                       <motion.div
                         key={application.id}
                         layout
-                        draggable
-                        onDragStart={(
-                          e: React.DragEvent<HTMLDivElement>,
-                        ) =>
+                        draggable={true}
+                        onDragStart={(e: any) =>
                           handleDragStart(
                             e,
                             application.id,
