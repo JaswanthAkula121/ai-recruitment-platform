@@ -1,6 +1,12 @@
 "use client";
 
-import { ChangeEvent, DragEvent, FormEvent, useEffect, useState } from "react";
+import React, {
+  ChangeEvent,
+  DragEvent,
+  FormEvent,
+  useEffect,
+  useState,
+} from "react";
 import { AnimatePresence, LayoutGroup, motion } from "framer-motion";
 
 const API_URL =
@@ -31,43 +37,11 @@ type CreateApplicationInput = {
 const PIPELINE_COLUMNS: Array<{
   key: PipelineStatus;
   label: string;
-  accent: string;
-  badge: string;
-  glow: string;
-  border: string;
 }> = [
-  {
-    key: "applied",
-    label: "Applied",
-    accent: "from-blue-500/25 via-sky-400/12 to-transparent",
-    badge: "border-blue-300/20 bg-blue-400/10 text-blue-100",
-    glow: "from-blue-400/30 to-violet-400/10",
-    border: "border-blue-300/15",
-  },
-  {
-    key: "interview",
-    label: "Interview",
-    accent: "from-violet-500/25 via-fuchsia-400/12 to-transparent",
-    badge: "border-violet-300/20 bg-violet-400/10 text-violet-100",
-    glow: "from-violet-400/30 to-blue-400/10",
-    border: "border-violet-300/15",
-  },
-  {
-    key: "hired",
-    label: "Hired",
-    accent: "from-cyan-500/25 via-blue-400/12 to-transparent",
-    badge: "border-cyan-300/20 bg-cyan-400/10 text-cyan-100",
-    glow: "from-cyan-400/30 to-blue-400/10",
-    border: "border-cyan-300/15",
-  },
-  {
-    key: "rejected",
-    label: "Rejected",
-    accent: "from-slate-500/25 via-violet-400/10 to-transparent",
-    badge: "border-slate-300/20 bg-slate-200/10 text-slate-100",
-    glow: "from-slate-300/20 to-violet-400/10",
-    border: "border-slate-200/15",
-  },
+  { key: "applied", label: "Applied" },
+  { key: "interview", label: "Interview" },
+  { key: "hired", label: "Hired" },
+  { key: "rejected", label: "Rejected" },
 ];
 
 const EMPTY_PIPELINE: PipelineResponse = {
@@ -78,9 +52,7 @@ const EMPTY_PIPELINE: PipelineResponse = {
 };
 
 function normalizePipeline(data: unknown): PipelineResponse {
-  if (!data || typeof data !== "object") {
-    return EMPTY_PIPELINE;
-  }
+  if (!data || typeof data !== "object") return EMPTY_PIPELINE;
 
   const pipeline = data as Partial<Record<PipelineStatus, unknown>>;
 
@@ -101,117 +73,80 @@ function normalizePipeline(data: unknown): PipelineResponse {
 }
 
 function moveApplication(
-  currentPipeline: PipelineResponse,
-  applicationId: string,
-  fromStatus: PipelineStatus,
-  toStatus: PipelineStatus,
+  current: PipelineResponse,
+  id: string,
+  from: PipelineStatus,
+  to: PipelineStatus,
 ): PipelineResponse {
-  if (fromStatus === toStatus) return currentPipeline;
+  if (from === to) return current;
 
-  const movedApplication = currentPipeline[fromStatus].find(
-    (application) => application.id === applicationId,
-  );
-
-  if (!movedApplication) return currentPipeline;
+  const item = current[from].find((app) => app.id === id);
+  if (!item) return current;
 
   return {
-    ...currentPipeline,
-    [fromStatus]: currentPipeline[fromStatus].filter(
-      (application) => application.id !== applicationId,
-    ),
-    [toStatus]: [
-      { ...movedApplication, status: toStatus },
-      ...currentPipeline[toStatus],
-    ],
+    ...current,
+    [from]: current[from].filter((app) => app.id !== id),
+    [to]: [{ ...item, status: to }, ...current[to]],
   };
 }
 
 export default function PipelineDashboard() {
   const [pipeline, setPipeline] = useState<PipelineResponse>(EMPTY_PIPELINE);
-  const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  const [dragged, setDragged] = useState<DraggedApplication | null>(null);
 
   const [createForm, setCreateForm] = useState({
     jobId: "",
     candidateId: "",
   });
 
-  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
-  const [isCreatingApplication, setIsCreatingApplication] = useState(false);
-
-  const [draggedApplication, setDraggedApplication] =
-    useState<DraggedApplication | null>(null);
-
-  const [activeDropColumn, setActiveDropColumn] =
-    useState<PipelineStatus | null>(null);
-
-  const [pendingApplicationIds, setPendingApplicationIds] = useState<string[]>(
-    [],
-  );
+  const [showModal, setShowModal] = useState(false);
+  const [creating, setCreating] = useState(false);
 
   useEffect(() => {
-    let isMounted = true;
-
-    async function fetchPipeline() {
-      try {
-        const response = await fetch(`${API_URL}/applications/pipeline`);
-
-        if (!response.ok) {
-          throw new Error(`Unable to load pipeline (${response.status})`);
-        }
-
-        const data = await response.json();
-
-        if (isMounted) {
-          setPipeline(normalizePipeline(data));
-          setError(null);
-        }
-      } catch (fetchError) {
-        if (isMounted) {
-          setError(
-            fetchError instanceof Error
-              ? fetchError.message
-              : "Unable to load pipeline.",
-          );
-        }
-      } finally {
-        if (isMounted) {
-          setIsLoading(false);
-        }
-      }
-    }
-
-    fetchPipeline();
-
-    return () => {
-      isMounted = false;
-    };
+    loadPipeline();
   }, []);
 
-  async function updateApplicationStatus(
+  async function loadPipeline() {
+    try {
+      const res = await fetch(`${API_URL}/applications/pipeline`);
+
+      if (!res.ok) throw new Error("Failed to load pipeline");
+
+      const data = await res.json();
+      setPipeline(normalizePipeline(data));
+      setError(null);
+    } catch {
+      setError("Failed to load applications.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function updateStatus(
     applicationId: string,
-    nextStatus: PipelineStatus,
+    status: PipelineStatus,
   ) {
-    const response = await fetch(
+    const res = await fetch(
       `${API_URL}/applications/${applicationId}/status`,
       {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ status: nextStatus }),
+        body: JSON.stringify({ status }),
       },
     );
 
-    if (!response.ok) {
-      throw new Error(`Unable to update application (${response.status})`);
-    }
+    if (!res.ok) throw new Error("Update failed");
   }
 
   async function createApplication(
     payload: CreateApplicationInput,
-  ): Promise<Application> {
-    const response = await fetch(`${API_URL}/applications`, {
+  ) {
+    const res = await fetch(`${API_URL}/applications`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -219,47 +154,40 @@ export default function PipelineDashboard() {
       body: JSON.stringify(payload),
     });
 
-    if (!response.ok) {
-      throw new Error(`Unable to create application (${response.status})`);
-    }
+    if (!res.ok) throw new Error("Create failed");
 
-    return response.json();
+    return res.json();
   }
 
-  function handleCreateInputChange(event: ChangeEvent<HTMLInputElement>) {
-    const { name, value } = event.target;
+  function handleInput(e: ChangeEvent<HTMLInputElement>) {
+    const { name, value } = e.target;
 
-    setCreateForm((current) => ({
-      ...current,
+    setCreateForm((prev) => ({
+      ...prev,
       [name]: value,
     }));
   }
 
-  async function handleCreateApplication(
-    event: FormEvent<HTMLFormElement>,
-  ) {
-    event.preventDefault();
+  async function handleCreate(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
 
-    const jobId = createForm.jobId.trim();
-    const candidateId = createForm.candidateId.trim();
-
-    if (!jobId || !candidateId) {
-      setError("Please enter jobId and candidateId.");
+    if (!createForm.jobId || !createForm.candidateId) {
+      setError("Enter jobId and candidateId");
       return;
     }
 
-    setIsCreatingApplication(true);
+    setCreating(true);
 
     try {
       const created = await createApplication({
-        jobId,
-        candidateId,
+        jobId: createForm.jobId,
+        candidateId: createForm.candidateId,
         status: "applied",
       });
 
-      setPipeline((current) => ({
-        ...current,
-        applied: [created, ...current.applied],
+      setPipeline((prev) => ({
+        ...prev,
+        applied: [created, ...prev.applied],
       }));
 
       setCreateForm({
@@ -267,192 +195,185 @@ export default function PipelineDashboard() {
         candidateId: "",
       });
 
-      setIsCreateModalOpen(false);
+      setShowModal(false);
       setError(null);
-    } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Unable to create application.",
-      );
+    } catch {
+      setError("Unable to create application.");
     } finally {
-      setIsCreatingApplication(false);
+      setCreating(false);
     }
   }
 
   function handleDragStart(
-    event: DragEvent<HTMLElement>,
-    applicationId: string,
+    e: React.DragEvent<HTMLDivElement>,
+    id: string,
     fromStatus: PipelineStatus,
   ) {
-    event.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.effectAllowed = "move";
 
-    setDraggedApplication({
-      id: applicationId,
+    setDragged({
+      id,
       fromStatus,
     });
   }
 
-  function handleDragEnd() {
-    setDraggedApplication(null);
-    setActiveDropColumn(null);
-  }
-
-  function handleDragOver(
-    event: DragEvent<HTMLDivElement>,
-    columnStatus: PipelineStatus,
-  ) {
-    event.preventDefault();
-    setActiveDropColumn(columnStatus);
+  function handleDragOver(e: React.DragEvent<HTMLDivElement>) {
+    e.preventDefault();
   }
 
   async function handleDrop(
-    event: DragEvent<HTMLDivElement>,
+    e: React.DragEvent<HTMLDivElement>,
     toStatus: PipelineStatus,
   ) {
-    event.preventDefault();
+    e.preventDefault();
 
-    if (!draggedApplication) return;
+    if (!dragged) return;
 
-    const previousPipeline = pipeline;
+    const old = pipeline;
 
-    const nextPipeline = moveApplication(
+    const updated = moveApplication(
       pipeline,
-      draggedApplication.id,
-      draggedApplication.fromStatus,
+      dragged.id,
+      dragged.fromStatus,
       toStatus,
     );
 
-    setPipeline(nextPipeline);
+    setPipeline(updated);
 
     try {
-      await updateApplicationStatus(draggedApplication.id, toStatus);
-    } catch (err) {
-      setPipeline(previousPipeline);
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Unable to update application status.",
-      );
-    } finally {
-      setDraggedApplication(null);
-      setActiveDropColumn(null);
+      await updateStatus(dragged.id, toStatus);
+    } catch {
+      setPipeline(old);
+      setError("Status update failed.");
     }
+
+    setDragged(null);
   }
 
   return (
     <section className="max-w-7xl mx-auto px-8 py-20">
-      <div className="mb-8 flex items-center justify-between">
-        <h2 className="text-4xl font-bold text-white">Hiring Pipeline</h2>
+      <div className="mb-8 flex justify-between items-center">
+        <h1 className="text-4xl font-bold text-white">
+          Hiring Pipeline
+        </h1>
 
         <button
-          onClick={() => setIsCreateModalOpen(true)}
-          className="rounded-full bg-blue-600 px-5 py-3 text-white font-semibold"
+          onClick={() => setShowModal(true)}
+          className="bg-blue-600 text-white px-5 py-3 rounded-full"
         >
           Add Application
         </button>
       </div>
 
       {error && (
-        <div className="mb-6 rounded-xl bg-red-500/20 p-4 text-red-100">
+        <div className="mb-6 bg-red-500/20 text-red-100 p-4 rounded-xl">
           {error}
         </div>
       )}
 
       <LayoutGroup>
         <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-4">
-          {PIPELINE_COLUMNS.map((column) => {
-            const applications = pipeline[column.key];
+          {PIPELINE_COLUMNS.map((column) => (
+            <div
+              key={column.key}
+              onDragOver={handleDragOver}
+              onDrop={(e) => handleDrop(e, column.key)}
+              className="rounded-3xl bg-white/10 p-5"
+            >
+              <h2 className="text-xl font-semibold text-white mb-4">
+                {column.label}
+              </h2>
 
-            return (
-              <div
-                key={column.key}
-                onDragOver={(e) => handleDragOver(e, column.key)}
-                onDrop={(e) => void handleDrop(e, column.key)}
-                className="rounded-3xl bg-white/10 p-5"
-              >
-                <h3 className="mb-4 text-xl font-semibold text-white">
-                  {column.label} ({applications.length})
-                </h3>
-
-                <div className="space-y-4">
-                  <AnimatePresence>
-                    {applications.map((application) => (
+              <div className="space-y-4">
+                <AnimatePresence>
+                  {(loading ? [] : pipeline[column.key]).map(
+                    (application) => (
                       <motion.div
                         key={application.id}
                         layout
                         draggable
-                        onDragStart={(e) =>
-                          handleDragStart(e, application.id, column.key)
+                        onDragStart={(
+                          e: React.DragEvent<HTMLDivElement>,
+                        ) =>
+                          handleDragStart(
+                            e,
+                            application.id,
+                            column.key,
+                          )
                         }
-                        onDragEnd={handleDragEnd}
-                        className="rounded-2xl bg-white/10 p-4 text-white cursor-grab"
+                        className="bg-white/10 rounded-2xl p-4 text-white cursor-grab"
                       >
-                        <p className="font-semibold">{application.id}</p>
+                        <p className="font-semibold">
+                          {application.id}
+                        </p>
+
                         <p className="text-sm mt-2">
                           Job: {application.jobId}
                         </p>
+
                         <p className="text-sm">
                           Candidate: {application.candidateId}
                         </p>
                       </motion.div>
-                    ))}
-                  </AnimatePresence>
-                </div>
+                    ),
+                  )}
+                </AnimatePresence>
               </div>
-            );
-          })}
+            </div>
+          ))}
         </div>
       </LayoutGroup>
 
       <AnimatePresence>
-        {isCreateModalOpen && (
+        {showModal && (
           <motion.div
-            className="fixed inset-0 bg-black/60 flex items-center justify-center px-4"
+            className="fixed inset-0 bg-black/60 flex justify-center items-center px-4"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
           >
             <motion.form
-              onSubmit={handleCreateApplication}
-              className="w-full max-w-lg rounded-3xl bg-slate-900 p-6"
+              onSubmit={handleCreate}
+              className="bg-slate-900 p-6 rounded-3xl w-full max-w-lg"
               initial={{ scale: 0.95 }}
               animate={{ scale: 1 }}
               exit={{ scale: 0.95 }}
             >
-              <h3 className="text-2xl font-semibold text-white mb-6">
+              <h2 className="text-2xl text-white font-semibold mb-6">
                 Add Application
-              </h3>
+              </h2>
 
               <input
                 name="jobId"
                 placeholder="Job ID"
                 value={createForm.jobId}
-                onChange={handleCreateInputChange}
-                className="mb-4 w-full rounded-xl p-3"
+                onChange={handleInput}
+                className="w-full mb-4 p-3 rounded-xl"
               />
 
               <input
                 name="candidateId"
                 placeholder="Candidate ID"
                 value={createForm.candidateId}
-                onChange={handleCreateInputChange}
-                className="mb-6 w-full rounded-xl p-3"
+                onChange={handleInput}
+                className="w-full mb-6 p-3 rounded-xl"
               />
 
               <div className="flex justify-end gap-3">
                 <button
                   type="button"
-                  onClick={() => setIsCreateModalOpen(false)}
-                  className="rounded-full bg-white/10 px-4 py-2 text-white"
+                  onClick={() => setShowModal(false)}
+                  className="px-4 py-2 rounded-full bg-white/10 text-white"
                 >
                   Cancel
                 </button>
 
                 <button
                   type="submit"
-                  disabled={isCreatingApplication}
-                  className="rounded-full bg-blue-600 px-5 py-2 text-white"
+                  disabled={creating}
+                  className="px-5 py-2 rounded-full bg-blue-600 text-white"
                 >
-                  {isCreatingApplication ? "Creating..." : "Create"}
+                  {creating ? "Creating..." : "Create"}
                 </button>
               </div>
             </motion.form>
