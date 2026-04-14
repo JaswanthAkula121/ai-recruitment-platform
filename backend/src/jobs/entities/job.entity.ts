@@ -11,7 +11,7 @@ export class Job {
   @Column()
   description: string;
 
-  @Column()
+  @Column({ nullable: true })
   companyId: string;
 
   @CreateDateColumn()
